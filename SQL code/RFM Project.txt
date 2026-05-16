@@ -1,0 +1,52 @@
+-- Fetch the overall dataset.
+
+select * from retail;
+
+-- Necessary columns. RFM Segmentation
+with cte1 as (
+	select InvoiceNo, CustomerID, InvoiceDate, Quantity, unitprice from retail
+	where InvoiceNo is not null and CustomerID is not null and InvoiceDate is not null
+	and Quantity > 0
+),
+
+cte2 as (
+select customerID, max(InvoiceDate) as Lastest_date,
+	(select max(InvoiceDate) from retail) as Max_Date,
+	round(sum(Unitprice * Quantity),0) as Monetary,
+		count(distinct InvoiceNo) as Frequency
+	from cte1
+	group by 1
+),
+
+cte3 as (
+select customerID, timestampdiff(Day,Lastest_date,Max_Date) + 1 as Recency,
+	Frequency , Monetary from cte2
+    ),
+    
+cte4 as (    
+
+select *, 
+	ntile(4) over (order by Recency desc) as R,
+    ntile(4) over (order by Frequency) as F,
+    ntile(4) over (order by Monetary) as M
+ from cte3
+ ),
+
+cte5 as (
+select *, concat(R,F,M) as RFM_Score from cte4
+),
+
+cte6 as(
+select *, 
+case when RFM_Score in (111,112,121,113,114,131,141) then 'Churned_Custmer'
+		 when RFM_Score in (123,124,122,133,134,144,334) then 'Slepping_Away'
+         when RFM_Score in (311,411,331,321) then 'Lost_Custmer'
+         when RFM_Score in (211,222,232,233,234,244) then 'Potential_Custmer'
+         when RFM_Score in (322,323,333,324,344,334) then 'Active_Custmer'
+         when RFM_Score in (421,422,423,434,444,433) then 'Loyal_Custmer'
+	else 'Others' end as RFM_Seg
+ from cte5
+ )
+
+select RFM_Seg, count(*) / (select count(*) from cte6 ) * 100 as perct_count
+from cte6 group by 1 order by 2 desc;
